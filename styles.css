@@ -1,0 +1,694 @@
+:root {
+  --bg: #f6f7f4;
+  --card: #ffffff;
+  --text: #111827;
+  --muted: #6b7280;
+  --line: #e5e7eb;
+  --green: #147d64;
+  --blue: #2563eb;
+  --red: #dc2626;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  background: var(--bg);
+  color: var(--text);
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+.app {
+  min-height: 100vh;
+}
+
+.entry-screen {
+  min-height: 100vh;
+  display: grid;
+  align-content: center;
+  gap: 18px;
+  padding: 20px;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin-top: 0;
+}
+
+h1 {
+  margin-bottom: 2px;
+  font-size: 2rem;
+  text-align: center;
+}
+
+h2 {
+  margin-bottom: 0;
+  font-size: 1.1rem;
+}
+
+h3 {
+  margin: 14px 0 8px;
+  color: var(--muted);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+}
+
+.entry-screen h2 {
+  text-align: center;
+}
+
+.entry-form,
+.entry-names {
+  display: grid;
+  gap: 8px;
+}
+
+.people-buttons {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.people-button {
+  min-height: 58px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: white;
+  color: var(--text);
+  font-size: 1.4rem;
+  font-weight: 900;
+}
+
+.people-button.active {
+  border-color: var(--green);
+  background: #e9f7f2;
+  color: var(--green);
+}
+
+.entry-names input {
+  min-height: 50px;
+}
+
+.entry-pair {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 8px;
+}
+
+.entry-pair span {
+  color: var(--muted);
+  font-weight: 900;
+}
+
+.workspace {
+  display: grid;
+  gap: 10px;
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 10px;
+}
+
+.setup-panel,
+.score-panel,
+.results-panel {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--card);
+  padding: 14px;
+}
+
+.panel-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.muted {
+  display: none;
+}
+
+.icon-button,
+.primary-button,
+.secondary-button,
+.ghost-button,
+.stepper button {
+  min-height: 48px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  font-weight: 800;
+}
+
+.icon-button {
+  width: 48px;
+  background: #f3f4f6;
+  color: var(--text);
+}
+
+.primary-button {
+  padding: 0 14px;
+  background: var(--green);
+  color: white;
+}
+
+.secondary-button {
+  min-height: 56px;
+  padding: 0 16px;
+  background: var(--blue);
+  color: white;
+}
+
+.secondary-button.compact {
+  min-height: 48px;
+}
+
+.ghost-button {
+  padding: 0 14px;
+  border-color: var(--line);
+  background: white;
+  color: var(--text);
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.setup-steps {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
+  gap: 6px;
+  margin: 12px 0;
+}
+
+.setup-step {
+  min-height: 32px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 800;
+}
+
+.setup-step.active {
+  background: var(--text);
+  color: white;
+  border-color: var(--text);
+}
+
+.setup-step.done {
+  background: #e9f7f2;
+  color: var(--green);
+}
+
+.setup-content,
+.players-form,
+.team-setup {
+  display: grid;
+  gap: 10px;
+}
+
+.team-picker,
+.summary-card,
+.standing-row,
+.log-row {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  padding: 10px;
+}
+
+label,
+.score-control {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+input,
+select {
+  width: 100%;
+  min-height: 52px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 12px;
+  background: white;
+  color: var(--text);
+  font-size: 1rem;
+}
+
+input:focus,
+select:focus {
+  border-color: var(--blue);
+  outline: 3px solid rgba(37, 99, 235, 0.16);
+}
+
+.wizard-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.summary-list,
+.standings,
+.match-log {
+  display: grid;
+  gap: 8px;
+}
+
+.summary-card span {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.match-meta {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.status-chip,
+.score-total,
+.pill {
+  min-height: 30px;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0 10px;
+  background: #f3f4f6;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.score-total.ready {
+  background: #e9f7f2;
+  color: var(--green);
+}
+
+.score-total.error,
+.form-message {
+  color: var(--red);
+}
+
+.current-match {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.court-match-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  background: #fafafa;
+}
+
+.court-match-row span {
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 900;
+}
+
+.court-match-row strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 0.98rem;
+  line-height: 1.2;
+}
+
+.court-match-row .pair-name {
+  display: grid;
+  gap: 2px;
+}
+
+.court-match-row .pair-name span {
+  color: var(--text);
+  font-size: 0.98rem;
+  font-weight: 900;
+  text-transform: none;
+}
+
+.court-match-row b {
+  color: var(--muted);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+}
+
+.court-waiting {
+  color: var(--muted);
+  font-size: 0.86rem;
+  font-weight: 800;
+}
+
+.waiting-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  align-items: center;
+  gap: 6px;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: #f3f4f6;
+  opacity: 0.78;
+}
+
+.waiting-row > span {
+  grid-column: 1 / -1;
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 900;
+}
+
+.waiting-row .pair-name {
+  display: grid;
+  justify-items: start;
+  gap: 2px;
+}
+
+.waiting-row .pair-score:last-child .pair-name {
+  justify-items: end;
+  text-align: right;
+}
+
+.waiting-row .pair-name span {
+  color: var(--muted);
+  font-size: 0.92rem;
+  font-weight: 900;
+}
+
+.waiting-row input:disabled {
+  background: #e5e7eb;
+  color: var(--muted);
+}
+
+.court-score-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  background: #fafafa;
+}
+
+.court-score-row .court-title {
+  grid-column: 1 / -1;
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 900;
+}
+
+.pair-score {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 54px;
+  align-items: center;
+  gap: 8px;
+}
+
+.pair-score-right {
+  grid-template-columns: 54px minmax(0, 1fr);
+}
+
+.pair-score-right input {
+  order: -1;
+}
+
+.pair-score-right .pair-name {
+  justify-items: end;
+  text-align: right;
+}
+
+.court-score-row .pair-name {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.court-score-row .pair-name span {
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-size: 0.95rem;
+  font-weight: 900;
+}
+
+.pair-score input {
+  min-height: 46px;
+  padding: 0 6px;
+  text-align: center;
+  font-size: 1.2rem;
+  font-weight: 900;
+}
+
+.team-card {
+  min-height: 88px;
+  display: grid;
+  align-content: center;
+  gap: 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px;
+  background: #fafafa;
+}
+
+.team-card strong {
+  font-size: 1.25rem;
+  line-height: 1.15;
+}
+
+.team-card span {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.versus {
+  justify-self: center;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 900;
+}
+
+.score-form {
+  display: grid;
+  gap: 10px;
+}
+
+.stepper {
+  display: grid;
+  grid-template-columns: 54px 1fr 54px;
+  gap: 8px;
+}
+
+.stepper button {
+  background: var(--text);
+  color: white;
+  font-size: 1.4rem;
+}
+
+.stepper input {
+  min-height: 58px;
+  text-align: center;
+  font-size: 1.5rem;
+  font-weight: 900;
+}
+
+.match-actions {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.padel-panel {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.padel-score {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.padel-score > div {
+  display: grid;
+  gap: 5px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  background: #fafafa;
+}
+
+.padel-score strong {
+  min-height: 38px;
+  font-size: 0.95rem;
+  line-height: 1.2;
+}
+
+.padel-score span {
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.padel-score b {
+  font-size: 2rem;
+}
+
+.padel-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.padel-actions .ghost-button {
+  grid-column: 1 / -1;
+}
+
+.sets-line {
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 800;
+}
+
+.form-message {
+  min-height: 20px;
+  margin: 0;
+  font-size: 0.86rem;
+  font-weight: 800;
+}
+
+.schedule-panel {
+  display: none;
+}
+
+.empty-state {
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  padding: 14px;
+  color: var(--muted);
+  background: #fafafa;
+}
+
+.standing-row {
+  display: grid;
+  grid-template-columns: 32px 1fr auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.rank {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: var(--text);
+  color: white;
+  font-weight: 900;
+}
+
+.statline {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.points {
+  color: var(--green);
+  font-size: 1.1rem;
+  font-weight: 900;
+}
+
+.match-log {
+  max-height: 260px;
+  overflow: auto;
+}
+
+.log-row {
+  font-size: 0.9rem;
+}
+
+.log-row .small-button {
+  min-height: 38px;
+  margin-top: 4px;
+}
+
+.log-row.editing {
+  gap: 8px;
+}
+
+.edit-score-row {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 8px;
+}
+
+.edit-score-row input {
+  min-height: 46px;
+  text-align: center;
+  font-weight: 900;
+}
+
+.log-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.bottom-actions {
+  display: grid;
+  justify-items: center;
+  margin-top: 14px;
+}
+
+.bottom-actions .primary-button {
+  min-width: 180px;
+}
+
+@media (min-width: 760px) {
+  .entry-screen {
+    max-width: 720px;
+    margin: 0 auto;
+  }
+
+  .workspace {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .score-panel,
+  .results-panel {
+    grid-column: 1 / -1;
+  }
+}

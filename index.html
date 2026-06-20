@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Padel Score</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <main class="app">
+      <section id="entryScreen" class="entry-screen">
+        <h1>Padel Score</h1>
+        <div id="entryFirstStep" class="entry-form">
+          <div class="people-buttons" aria-label="People">
+            <button class="people-button" data-people="4" type="button">4</button>
+            <button class="people-button active" data-people="6" type="button">6</button>
+            <button class="people-button" data-people="8" type="button">8</button>
+          </div>
+          <label>
+            <span>Game type</span>
+            <select id="gameTypeSelect"></select>
+          </label>
+          <label id="courtsField" hidden>
+            <span>Courts</span>
+            <select id="courtsSelect">
+              <option value="1">1 court</option>
+              <option value="2" selected>2 courts</option>
+            </select>
+          </label>
+          <button id="entryNextBtn" class="secondary-button" type="button">Next</button>
+        </div>
+        <div id="entryNamesStep" class="entry-form" hidden>
+          <div id="entryNames" class="entry-names"></div>
+          <button id="entryStartBtn" class="secondary-button" type="button">Generate matches</button>
+          <button id="entryBackBtn" class="ghost-button" type="button">Back</button>
+        </div>
+        <p id="entryMessage" class="form-message" role="status"></p>
+      </section>
+
+      <section id="workspace" class="workspace">
+        <aside id="setupPanel" class="setup-panel">
+          <div class="panel-heading">
+            <div>
+              <h2 id="setupSubtitle">Setup</h2>
+            </div>
+            <button id="resetBtn" class="icon-button" type="button" title="Reset session" aria-label="Reset session">↺</button>
+          </div>
+          <div id="setupSteps" class="setup-steps" aria-label="Setup progress"></div>
+          <div id="setupContent" class="setup-content"></div>
+        </aside>
+
+        <section class="score-panel">
+          <div class="panel-heading">
+            <div>
+              <h2 id="modeTitle">Match</h2>
+              <p id="modeNote" class="muted"></p>
+            </div>
+          </div>
+
+          <div class="match-meta">
+            <span id="scoreTargetLabel" class="status-chip">Target 21</span>
+            <span id="scoreTotal" class="score-total">0 / 21 points</span>
+          </div>
+
+          <div id="currentMatch" class="current-match"></div>
+
+          <div id="padelPanel" class="padel-panel" hidden></div>
+          <div id="parallelPanel" class="padel-panel" hidden></div>
+
+          <form id="scoreForm" class="score-form">
+            <div class="score-control">
+              <span id="teamALabel">Team A points</span>
+              <div class="stepper">
+                <button type="button" data-score-target="A" data-step="-1" aria-label="Decrease team A score">−</button>
+                <input id="scoreA" type="number" min="0" max="21" placeholder="0" inputmode="numeric">
+                <button type="button" data-score-target="A" data-step="1" aria-label="Increase team A score">+</button>
+              </div>
+            </div>
+            <div class="score-control">
+              <span id="teamBLabel">Team B points</span>
+              <div class="stepper">
+                <button type="button" data-score-target="B" data-step="-1" aria-label="Decrease team B score">−</button>
+                <input id="scoreB" type="number" min="0" max="21" placeholder="0" inputmode="numeric">
+                <button type="button" data-score-target="B" data-step="1" aria-label="Increase team B score">+</button>
+              </div>
+            </div>
+            <button class="secondary-button" type="submit">Add match</button>
+          </form>
+          <div class="match-actions">
+            <button id="generateMatchBtn" class="ghost-button" type="button">Generate next match</button>
+            <p id="formMessage" class="form-message" role="status"></p>
+          </div>
+
+          <div id="schedulePanel" class="schedule-panel"></div>
+        </section>
+
+        <aside class="results-panel">
+          <div class="panel-heading">
+            <h2>Results</h2>
+            <span id="matchCount" class="pill">0 matches</span>
+          </div>
+          <div id="standings" class="standings empty-state">Add scores, then calculate.</div>
+          <div>
+            <h3>Match log</h3>
+            <div id="matchLog" class="match-log empty-state">No matches yet.</div>
+          </div>
+          <div class="bottom-actions">
+            <button id="calculateBtn" class="primary-button" type="button">Calculate</button>
+          </div>
+        </aside>
+      </section>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>
