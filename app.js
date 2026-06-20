@@ -27,6 +27,9 @@ const state = {
   roundIndex: 0,
 };
 
+const SESSION_STORAGE_KEY = "padelScoreSession";
+const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
+
 const modeConfig = {
   "4": {
     title: "4-player Standard",
@@ -114,6 +117,10 @@ const els = {
   matchCount: document.querySelector("#matchCount"),
   schedulePanel: document.querySelector("#schedulePanel"),
   resetBtn: document.querySelector("#resetBtn"),
+  clearSessionBtn: document.querySelector("#clearSessionBtn"),
+  resetDialog: document.querySelector("#resetDialog"),
+  confirmResetBtn: document.querySelector("#confirmResetBtn"),
+  cancelResetBtn: document.querySelector("#cancelResetBtn"),
   generateMatchBtn: document.querySelector("#generateMatchBtn"),
   formMessage: document.querySelector("#formMessage"),
 };
@@ -189,7 +196,43 @@ function resetSession(keepNames = true) {
   render();
 }
 
+function saveSession() {
+  try {
+    localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({
+      expiresAt: Date.now() + SESSION_TTL_MS,
+      state,
+    }));
+  } catch {
+    // Storage can be unavailable in private mode or locked-down browsers.
+  }
+}
+
+function clearSavedSession() {
+  try {
+    localStorage.removeItem(SESSION_STORAGE_KEY);
+  } catch {
+    // Ignore storage cleanup failures.
+  }
+}
+
+function restoreSavedSession() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(SESSION_STORAGE_KEY) || "null");
+    if (!saved || saved.expiresAt <= Date.now() || !saved.state) {
+      clearSavedSession();
+      return false;
+    }
+
+    Object.assign(state, saved.state);
+    return true;
+  } catch {
+    clearSavedSession();
+    return false;
+  }
+}
+
 function resetToEntry() {
+  clearSavedSession();
   state.mode = null;
   state.entryGameType = "americano";
   state.entryPeople = 6;
@@ -213,6 +256,20 @@ function resetToEntry() {
   }
   if (els.entryMessage) els.entryMessage.textContent = "";
   render();
+}
+
+function openResetDialog() {
+  els.resetDialog.hidden = false;
+  els.confirmResetBtn.focus();
+}
+
+function closeResetDialog() {
+  els.resetDialog.hidden = true;
+}
+
+function confirmResetSession() {
+  closeResetDialog();
+  resetToEntry();
 }
 
 function isAmericanoMode(mode = state.mode) {
@@ -373,6 +430,7 @@ function buildAmericanoRounds() {
 function updatePlayer(index, value) {
   state.players[index] = value;
   if (isAmericanoMode()) state.americanoRounds = buildAmericanoRounds();
+  saveSession();
   renderMatchOnly();
 }
 
@@ -382,6 +440,7 @@ function updateTeam(teamIndex, slot, value) {
   if (state.teams[teamIndex][0] === state.teams[teamIndex][1]) {
     state.teams[teamIndex][slot === 0 ? 1 : 0] = firstAvailablePlayer([selected]);
   }
+  saveSession();
   renderMatchOnly();
   renderSetupWizard();
 }
@@ -770,7 +829,7 @@ function calculateStandings() {
   });
 
   const rows = [...stats.values()].sort((a, b) =>
-    b.wins - a.wins || (b.points - b.against) - (a.points - a.against) || b.points - a.points
+    b.points - a.points || b.wins - a.wins || (b.points - b.against) - (a.points - a.against)
   );
 
   renderStandings(rows);
@@ -792,6 +851,7 @@ function render() {
     els.entryScreen.hidden = false;
     els.workspace.hidden = true;
     renderEntryScreen();
+    saveSession();
     return;
   }
 
@@ -809,6 +869,7 @@ function render() {
   els.standings.textContent = "Add scores, then finalize.";
   clearMessage();
   updateScoreFeedback();
+  saveSession();
 }
 
 function renderSetupWizard() {
@@ -1091,9 +1152,9 @@ function rankForRow(rows, row, index) {
 }
 
 function standingsRowsAreTied(a, b) {
-  return a.wins === b.wins
-    && (a.points - a.against) === (b.points - b.against)
-    && a.points === b.points;
+  return a.points === b.points
+    && a.wins === b.wins
+    && (a.points - a.against) === (b.points - b.against);
 }
 
 function rankBadgeHtml(rank) {
@@ -1480,12 +1541,14 @@ els.gameTypeSelect.addEventListener("change", () => {
   state.entryGameType = els.gameTypeSelect.value;
   if (state.entryPeople === 8 && state.entryGameType === "standard") state.entryCourts = 2;
   els.entryMessage.textContent = "";
+  saveSession();
   renderEntryScreen();
 });
 
 els.courtsSelect.addEventListener("change", () => {
   state.entryCourts = Number(els.courtsSelect.value);
   els.entryMessage.textContent = "";
+  saveSession();
 });
 
 els.entryFirstStep.addEventListener("click", (event) => {
@@ -1497,6 +1560,7 @@ els.entryFirstStep.addEventListener("click", (event) => {
   renderGameTypeOptions();
   renderEntryScreen();
   els.entryMessage.textContent = "";
+  saveSession();
 });
 
 els.entryNextBtn.addEventListener("click", () => {
@@ -1506,12 +1570,14 @@ els.entryNextBtn.addEventListener("click", () => {
   state.entryStep = 2;
   els.entryMessage.textContent = "";
   renderEntryScreen();
+  saveSession();
 });
 
 els.entryBackBtn.addEventListener("click", () => {
   state.entryStep = 1;
   els.entryMessage.textContent = "";
   renderEntryScreen();
+  saveSession();
 });
 
 els.entryStartBtn.addEventListener("click", startFromEntry);
@@ -1640,7 +1706,20 @@ els.matchLog.addEventListener("input", (event) => {
   if (target && Number.isFinite(value)) target.value = Math.max(0, Math.min(21, 21 - value));
 });
 els.calculateBtn.addEventListener("click", calculateStandings);
-els.resetBtn.addEventListener("click", resetToEntry);
+els.resetBtn.addEventListener("click", openResetDialog);
+els.clearSessionBtn.addEventListener("click", openResetDialog);
+els.confirmResetBtn.addEventListener("click", confirmResetSession);
+els.cancelResetBtn.addEventListener("click", closeResetDialog);
+els.resetDialog.addEventListener("click", (event) => {
+  if (event.target === els.resetDialog) closeResetDialog();
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && !els.resetDialog.hidden) closeResetDialog();
+});
 els.generateMatchBtn?.addEventListener("click", generateNextMatch);
 
-resetToEntry();
+if (restoreSavedSession()) {
+  render();
+} else {
+  resetToEntry();
+}

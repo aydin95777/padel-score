@@ -105,9 +105,21 @@
           </div>
           <div class="bottom-actions">
             <button id="calculateBtn" class="primary-button" type="button">Finalize</button>
+            <button id="clearSessionBtn" class="ghost-button" type="button">Reset</button>
           </div>
         </aside>
       </section>
+
+      <div id="resetDialog" class="dialog-backdrop" hidden>
+        <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="resetDialogTitle">
+          <h2 id="resetDialogTitle">Reset session?</h2>
+          <p>This clears all player names, teams, scores, match log, and saved browser data for this session.</p>
+          <div class="dialog-actions">
+            <button id="confirmResetBtn" class="primary-button danger-button" type="button">Reset</button>
+            <button id="cancelResetBtn" class="ghost-button" type="button">Keep session</button>
+          </div>
+        </div>
+      </div>
     </main>
 
     <script src="app.js"></script>
