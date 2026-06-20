@@ -25,6 +25,7 @@ const state = {
   },
   americanoRounds: [],
   roundIndex: 0,
+  finalizedResult: null,
 };
 
 const SESSION_STORAGE_KEY = "padelScoreSession";
@@ -153,6 +154,7 @@ function initMode(mode, keepNames = false) {
     : defaultPlayers(count);
   state.teams = defaultTeams(mode);
   state.matches = [];
+  state.finalizedResult = null;
   state.currentTeams = [0, 1];
   state.waitingTeam = 2;
   state.waitingTeams = initialWaitingTeams(mode);
@@ -180,6 +182,7 @@ function resetSession(keepNames = true) {
     : defaultPlayers(count);
   state.teams = defaultTeams(mode);
   state.matches = [];
+  state.finalizedResult = null;
   state.currentTeams = [0, 1];
   state.waitingTeam = 2;
   state.waitingTeams = initialWaitingTeams(mode);
@@ -231,6 +234,10 @@ function restoreSavedSession() {
   }
 }
 
+function clearFinalizedResult() {
+  state.finalizedResult = null;
+}
+
 function resetToEntry() {
   clearSavedSession();
   state.mode = null;
@@ -243,6 +250,7 @@ function resetToEntry() {
   state.players = [];
   state.teams = [];
   state.matches = [];
+  clearFinalizedResult();
   state.waitingTeams = [];
   state.fixedStreaks = {};
   state.editingMatchIndex = null;
@@ -256,6 +264,7 @@ function resetToEntry() {
   }
   if (els.entryMessage) els.entryMessage.textContent = "";
   render();
+  clearSavedSession();
 }
 
 function openResetDialog() {
@@ -430,6 +439,7 @@ function buildAmericanoRounds() {
 function updatePlayer(index, value) {
   state.players[index] = value;
   if (isAmericanoMode()) state.americanoRounds = buildAmericanoRounds();
+  clearFinalizedResult();
   saveSession();
   renderMatchOnly();
 }
@@ -440,6 +450,7 @@ function updateTeam(teamIndex, slot, value) {
   if (state.teams[teamIndex][0] === state.teams[teamIndex][1]) {
     state.teams[teamIndex][slot === 0 ? 1 : 0] = firstAvailablePlayer([selected]);
   }
+  clearFinalizedResult();
   saveSession();
   renderMatchOnly();
   renderSetupWizard();
@@ -473,6 +484,7 @@ function addMatch(event) {
     return;
   }
 
+  clearFinalizedResult();
   state.matches.push({
     mode: state.mode,
     label: match.label,
@@ -512,6 +524,7 @@ function addParallelMatches() {
   const [court1A, court1B, court2A, court2B] = scores;
   if (!scoresAreValid(court1A, court1B) || !scoresAreValid(court2A, court2B)) return;
 
+  clearFinalizedResult();
   state.matches.push({
     mode: state.mode,
     label: `${match.label} · Court 1`,
@@ -548,6 +561,7 @@ function addSingleCourtMatch() {
 
   if (!match || !scoresAreValid(scoreA, scoreB)) return;
 
+  clearFinalizedResult();
   state.matches.push({
     mode: state.mode,
     label: match.label,
@@ -588,6 +602,7 @@ function saveEditedMatch(matchIndex) {
   match.winner = scoreA > scoreB ? "A" : "B";
   match.setScore = `${scoreA}-${scoreB}`;
   state.editingMatchIndex = null;
+  clearFinalizedResult();
   syncPadelSetsFromMatches();
   render();
 }
@@ -653,6 +668,7 @@ function addSingleCourtPadelSet() {
 
   if (!match || !padelSetScoresAreValid(scoreA, scoreB)) return;
 
+  clearFinalizedResult();
   state.padel.sets.push([scoreA, scoreB]);
   state.matches.push({
     mode: "4",
@@ -672,6 +688,7 @@ function winPadelGame(teamIndex) {
   state.padel.points = [0, 0];
 
   if (setIsComplete()) {
+    clearFinalizedResult();
     state.padel.sets.push([...state.padel.games]);
     state.matches.push({
       mode: "4",
@@ -723,6 +740,7 @@ function undoPadelPoint() {
   if (!isPadelScoreMode()) return;
   resetPadelScore();
   state.matches = state.matches.filter((match) => match.mode !== "4");
+  clearFinalizedResult();
   render();
 }
 
@@ -803,7 +821,10 @@ function calculateStandings() {
   const keyFor = (team) => (isAmericanoMode() ? null : team.join("-"));
 
   if (isPadelScoreMode()) {
-    renderPadelResult();
+    const rows = padelResultRows();
+    state.finalizedResult = { type: "padel", rows };
+    renderPadelRows(rows);
+    saveSession();
     return;
   }
 
@@ -832,7 +853,9 @@ function calculateStandings() {
     b.points - a.points || b.wins - a.wins || (b.points - b.against) - (a.points - a.against)
   );
 
+  state.finalizedResult = { type: "standings", rows };
   renderStandings(rows);
+  saveSession();
 }
 
 function applyPlayerStats(stats, team, points, against, won) {
@@ -867,6 +890,7 @@ function render() {
   renderSchedule();
   els.standings.className = "standings empty-state";
   els.standings.textContent = "Add scores, then finalize.";
+  renderFinalizedResult();
   clearMessage();
   updateScoreFeedback();
   saveSession();
@@ -1143,6 +1167,15 @@ function renderStandings(rows) {
   `).join("");
 }
 
+function renderFinalizedResult() {
+  if (!state.finalizedResult) return;
+  if (state.finalizedResult.type === "padel") {
+    renderPadelRows(state.finalizedResult.rows);
+    return;
+  }
+  renderStandings(state.finalizedResult.rows);
+}
+
 function rankForRow(rows, row, index) {
   let rank = 1;
   for (let rowIndex = 1; rowIndex <= index; rowIndex += 1) {
@@ -1240,6 +1273,7 @@ function addTwoCourtPadelSets() {
   const setTwo = [values[2], values[3]];
   if (!match || !padelSetScoresAreValid(setOne[0], setOne[1]) || !padelSetScoresAreValid(setTwo[0], setTwo[1])) return;
 
+  clearFinalizedResult();
   state.padel.sets.push(setOne, setTwo);
   state.matches.push({
     mode: "P8",
@@ -1273,8 +1307,8 @@ function padelPointLabels() {
   return [labels[a], labels[b]];
 }
 
-function renderPadelResult() {
-  const rows = state.teams.map((team, index) => {
+function padelResultRows() {
+  return state.teams.map((team, index) => {
     const wonSets = state.padel.sets.filter((set) => set[index] > set[index === 0 ? 1 : 0]).length;
     return {
       name: teamName(team),
@@ -1285,7 +1319,9 @@ function renderPadelResult() {
       setLine: state.padel.sets.map((set) => `${set[index]}-${set[index === 0 ? 1 : 0]}`).join(", ") || "-",
     };
   }).sort((a, b) => b.wins - a.wins);
+}
 
+function renderPadelRows(rows) {
   els.standings.className = "standings";
   els.standings.innerHTML = rows.map((row, index) => `
     <div class="standing-row">
