@@ -84,6 +84,12 @@ const gameTypeOptions = {
   ],
 };
 
+const defaultGameTypeByPeople = {
+  4: "standard",
+  6: "americano",
+  8: "americano",
+};
+
 const els = {
   entryScreen: document.querySelector("#entryScreen"),
   entryFirstStep: document.querySelector("#entryFirstStep"),
@@ -246,7 +252,7 @@ function normalizeSessionState() {
 
   const options = gameTypeOptions[state.entryPeople] || gameTypeOptions[6];
   if (!options.some((option) => option.value === state.entryGameType)) {
-    state.entryGameType = options[0].value;
+    state.entryGameType = defaultGameTypeByPeople[state.entryPeople] || options[0].value;
   }
   if (state.entryPeople === 8 && state.entryGameType === "standard") state.entryCourts = 2;
   if (state.entryPeople !== 8) state.entryCourts = 1;
@@ -1641,6 +1647,7 @@ els.entryFirstStep.addEventListener("click", (event) => {
   const peopleButton = event.target.closest("[data-people]");
   if (!peopleButton) return;
   state.entryPeople = Number(peopleButton.dataset.people);
+  state.entryGameType = defaultGameTypeByPeople[state.entryPeople] || state.entryGameType;
   if (state.entryPeople !== 8) state.entryCourts = 1;
   if (state.entryPeople === 8) state.entryCourts = 2;
   renderGameTypeOptions();
