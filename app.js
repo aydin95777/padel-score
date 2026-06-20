@@ -29,6 +29,7 @@ const state = {
 };
 
 const SESSION_STORAGE_KEY = "padelScoreSession";
+const SESSION_STORAGE_VERSION = 2;
 const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
 
 const modeConfig = {
@@ -202,6 +203,7 @@ function resetSession(keepNames = true) {
 function saveSession() {
   try {
     localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({
+      version: SESSION_STORAGE_VERSION,
       expiresAt: Date.now() + SESSION_TTL_MS,
       state,
     }));
@@ -221,16 +223,61 @@ function clearSavedSession() {
 function restoreSavedSession() {
   try {
     const saved = JSON.parse(localStorage.getItem(SESSION_STORAGE_KEY) || "null");
-    if (!saved || saved.expiresAt <= Date.now() || !saved.state) {
+    if (!saved || saved.version !== SESSION_STORAGE_VERSION || saved.expiresAt <= Date.now() || !saved.state) {
       clearSavedSession();
       return false;
     }
 
     Object.assign(state, saved.state);
+    normalizeSessionState();
     return true;
   } catch {
     clearSavedSession();
     return false;
+  }
+}
+
+function normalizeSessionState() {
+  state.entryPeople = Number(state.entryPeople);
+  if (![4, 6, 8].includes(state.entryPeople)) state.entryPeople = 6;
+
+  state.entryCourts = Number(state.entryCourts);
+  if (![1, 2].includes(state.entryCourts)) state.entryCourts = state.entryPeople === 8 ? 2 : 1;
+
+  const options = gameTypeOptions[state.entryPeople] || gameTypeOptions[6];
+  if (!options.some((option) => option.value === state.entryGameType)) {
+    state.entryGameType = options[0].value;
+  }
+  if (state.entryPeople === 8 && state.entryGameType === "standard") state.entryCourts = 2;
+  if (state.entryPeople !== 8) state.entryCourts = 1;
+
+  if (!modeConfig[state.mode]) state.mode = null;
+  if (!Array.isArray(state.players)) state.players = [];
+  if (!Array.isArray(state.teams)) state.teams = [];
+  if (!Array.isArray(state.matches)) state.matches = [];
+  if (!Array.isArray(state.waitingTeams)) state.waitingTeams = [];
+  if (!Array.isArray(state.americanoRounds)) state.americanoRounds = [];
+  if (!state.padel || !Array.isArray(state.padel.points) || !Array.isArray(state.padel.games) || !Array.isArray(state.padel.sets)) {
+    resetPadelScore();
+  }
+
+  if (state.mode) {
+    const count = modeConfig[state.mode].count;
+    state.players = Array.from({ length: count }, (_, index) => state.players[index] || `Player ${index + 1}`);
+
+    if (isAmericanoMode()) {
+      state.teams = [];
+      state.americanoRounds = buildAmericanoRounds();
+      state.roundIndex = Math.min(Number(state.roundIndex) || 0, state.americanoRounds.length);
+    } else {
+      const expectedTeams = Math.floor(count / 2);
+      if (state.teams.length !== expectedTeams || !teamsAreValid()) {
+        state.teams = defaultTeams(state.mode);
+      }
+      state.currentTeams = Array.isArray(state.currentTeams) && state.currentTeams.length === 2 ? state.currentTeams : [0, 1];
+      state.waitingTeams = state.waitingTeams.filter((teamIndex) => state.teams[teamIndex]);
+      if (!state.waitingTeams.length) state.waitingTeams = initialWaitingTeams(state.mode);
+    }
   }
 }
 
@@ -993,7 +1040,7 @@ function renderMatchOnly() {
     els.scoreForm.hidden = true;
     els.padelPanel.hidden = true;
     els.parallelPanel.hidden = true;
-    els.generateMatchBtn.hidden = true;
+    renderGenerateButton();
     renderSchedule();
     updateScoreFeedback();
     return;
@@ -1511,10 +1558,13 @@ function renderEntryScreen() {
 }
 
 function renderGameTypeOptions() {
-  const options = gameTypeOptions[state.entryPeople];
+  state.entryPeople = Number(state.entryPeople);
+  if (![4, 6, 8].includes(state.entryPeople)) state.entryPeople = 6;
+  const options = gameTypeOptions[state.entryPeople] || gameTypeOptions[6];
   if (!options.some((option) => option.value === state.entryGameType)) {
     state.entryGameType = options[0].value;
   }
+  if (state.entryPeople === 8 && state.entryGameType === "standard") state.entryCourts = 2;
   els.gameTypeSelect.innerHTML = options
     .map((option) => `<option value="${option.value}">${option.label}</option>`)
     .join("");
