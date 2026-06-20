@@ -677,17 +677,40 @@ select:focus {
 }
 
 .log-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 38px;
+  align-items: center;
+  gap: 10px;
   font-size: 0.9rem;
 }
 
-.log-row .small-button {
+.log-result {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.log-label {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.log-result strong {
+  overflow-wrap: anywhere;
+}
+
+.edit-button {
+  width: 38px;
   min-height: 38px;
-  margin-top: 4px;
+  justify-self: end;
+  background: #f3f4f6;
+  color: var(--text);
 }
 
 .log-row.editing {
-  display: grid;
-  gap: 8px;
+  grid-template-columns: 1fr;
+  align-items: start;
 }
 
 .edit-score-row {

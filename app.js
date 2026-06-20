@@ -1428,9 +1428,12 @@ function renderLog() {
 
     return `
       <div class="log-row">
-        <b>#${matchIndex + 1}</b>
-        <span>${escapeHtml(match.label)} · ${escapeHtml(teamName(match.teamA))} ${match.scoreA} - ${match.scoreB} ${escapeHtml(teamName(match.teamB))}</span>
-        <button class="ghost-button small-button" data-edit-match="${matchIndex}" type="button">Edit</button>
+        <div class="log-result">
+          <b>#${matchIndex + 1}</b>
+          <span class="log-label">${escapeHtml(match.label)}</span>
+          <strong>${escapeHtml(teamName(match.teamA))} ${match.scoreA} - ${match.scoreB} ${escapeHtml(teamName(match.teamB))}</strong>
+        </div>
+        <button class="icon-button edit-button" data-edit-match="${matchIndex}" type="button" title="Edit match" aria-label="Edit match">✎</button>
       </div>
     `;
   }).join("");
