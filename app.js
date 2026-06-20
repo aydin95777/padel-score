@@ -30,7 +30,7 @@ const state = {
 const modeConfig = {
   "4": {
     title: "4-player Standard",
-    note: "Two fixed pairs. Add games or sets and calculate the pair result.",
+    note: "Two fixed pairs. Add games or sets and finalize the pair result.",
     count: 4,
     type: "standard",
   },
@@ -75,6 +75,7 @@ const gameTypeOptions = {
   8: [
     { value: "americano", label: "Americano" },
     { value: "fixed", label: "Fixed Teams" },
+    { value: "standard", label: "Standard" },
   ],
 };
 
@@ -123,11 +124,9 @@ function defaultPlayers(count) {
 
 function defaultTeams(mode) {
   if (isAmericanoMode(mode)) return [];
-  return [
-    [0, 1],
-    [2, 3],
-    [4, 5],
-  ].filter((team) => team.every((playerIndex) => playerIndex < state.players.length));
+  const count = modeConfig[mode]?.count || state.players.length;
+  return Array.from({ length: Math.floor(count / 2) }, (_, index) => [index * 2, index * 2 + 1])
+    .filter((team) => team.every((playerIndex) => playerIndex < state.players.length));
 }
 
 function initialWaitingTeams(mode) {
@@ -235,10 +234,6 @@ function teamNameHtml(team) {
 }
 
 function activeMatch() {
-  if (state.mode === "R8" && state.entryCourts === 2 && !state.matchReady) {
-    return null;
-  }
-
   if (isAmericanoMode()) {
     const round = state.americanoRounds[state.roundIndex] || null;
     if (round && state.entryCourts === 2 && round.waiting?.length >= 2) {
@@ -522,11 +517,6 @@ function editMatch(matchIndex) {
   renderLog();
 }
 
-function cancelEditMatch() {
-  state.editingMatchIndex = null;
-  renderLog();
-}
-
 function saveEditedMatch(matchIndex) {
   const match = state.matches[matchIndex];
   const scoreA = Number(document.querySelector(`[data-edit-score-a="${matchIndex}"]`)?.value);
@@ -602,15 +592,7 @@ function addSingleCourtPadelSet() {
   const scoreA = Number(document.querySelector("#padelSetA")?.value);
   const scoreB = Number(document.querySelector("#padelSetB")?.value);
 
-  if (!match || !Number.isFinite(scoreA) || !Number.isFinite(scoreB) || scoreA < 0 || scoreB < 0) {
-    showMessage("Enter valid games.");
-    return;
-  }
-
-  if (scoreA === scoreB) {
-    showMessage("A set cannot end in a tie.");
-    return;
-  }
+  if (!match || !padelSetScoresAreValid(scoreA, scoreB)) return;
 
   state.padel.sets.push([scoreA, scoreB]);
   state.matches.push({
@@ -654,6 +636,28 @@ function setIsComplete() {
   const leader = Math.max(a, b);
   const diff = Math.abs(a - b);
   return (leader >= 6 && diff >= 2) || leader === 7;
+}
+
+function padelSetScoresAreValid(scoreA, scoreB) {
+  if (!Number.isInteger(scoreA) || !Number.isInteger(scoreB) || scoreA < 0 || scoreB < 0) {
+    showMessage("Enter valid games.");
+    return false;
+  }
+
+  if (scoreA === scoreB) {
+    showMessage("A set cannot end in a tie.");
+    return false;
+  }
+
+  const leader = Math.max(scoreA, scoreB);
+  const trailer = Math.min(scoreA, scoreB);
+  const diff = leader - trailer;
+  if (!((leader === 6 && diff >= 2) || (leader === 7 && (trailer === 5 || trailer === 6)))) {
+    showMessage("Enter a valid padel set score.");
+    return false;
+  }
+
+  return true;
 }
 
 function undoPadelPoint() {
@@ -802,7 +806,7 @@ function render() {
   renderLog();
   renderSchedule();
   els.standings.className = "standings empty-state";
-  els.standings.textContent = "Add scores, then calculate.";
+  els.standings.textContent = "Add scores, then finalize.";
   clearMessage();
   updateScoreFeedback();
 }
@@ -912,13 +916,10 @@ function renderMatchOnly() {
 
   const match = activeMatch();
   if (!match) {
-    const message = state.mode === "6" || state.mode === "R8"
-      ? "Score saved. Generate the next match when the court is ready."
-      : "All Americano rounds are complete.";
-    els.currentMatch.innerHTML = `<div class="empty-state">${message}</div>`;
+    els.currentMatch.innerHTML = `<div class="empty-state">All Americano rounds are complete.</div>`;
     els.parallelPanel.hidden = true;
     els.padelPanel.hidden = true;
-    els.scoreForm.hidden = state.mode !== "6" && state.mode !== "R8";
+    els.scoreForm.hidden = true;
     if (state.mode === "6" || state.mode === "R8") {
       els.scoreForm.querySelectorAll("input, button").forEach((control) => control.disabled = true);
     }
@@ -1040,6 +1041,7 @@ function renderParallelPanel() {
 }
 
 function renderGenerateButton() {
+  if (!els.generateMatchBtn) return;
   els.generateMatchBtn.hidden = true;
   els.generateMatchBtn.disabled = true;
 }
@@ -1051,12 +1053,7 @@ function renderSchedule() {
   }
 
   if (!isAmericanoMode()) {
-    els.schedulePanel.innerHTML = state.mode === "6" || state.mode === "R8"
-      ? `
-        <h3>Match generator</h3>
-        <div class="round"><strong>Next</strong><span>${state.matchReady ? "Current match is ready." : "Click Generate next match."}</span></div>
-      `
-      : "";
+    els.schedulePanel.innerHTML = "";
     return;
   }
 
@@ -1075,14 +1072,39 @@ function renderStandings(rows) {
   els.standings.className = "standings";
   els.standings.innerHTML = rows.map((row, index) => `
     <div class="standing-row">
-      <div class="rank">${index + 1}</div>
-      <div>
+      ${rankBadgeHtml(rankForRow(rows, row, index))}
+      <div class="standing-main">
         <strong>${escapeHtml(row.name)}</strong>
         <div class="statline">${row.played} played · ${row.wins} wins · diff ${row.points - row.against}</div>
       </div>
       <div class="points">${row.points}</div>
     </div>
   `).join("");
+}
+
+function rankForRow(rows, row, index) {
+  let rank = 1;
+  for (let rowIndex = 1; rowIndex <= index; rowIndex += 1) {
+    if (!standingsRowsAreTied(rows[rowIndex - 1], rows[rowIndex])) rank += 1;
+  }
+  return rank;
+}
+
+function standingsRowsAreTied(a, b) {
+  return a.wins === b.wins
+    && (a.points - a.against) === (b.points - b.against)
+    && a.points === b.points;
+}
+
+function rankBadgeHtml(rank) {
+  const medals = [
+    { label: "1st place", className: "gold", symbol: "1" },
+    { label: "2nd place", className: "silver", symbol: "2" },
+    { label: "3rd place", className: "bronze", symbol: "3" },
+  ];
+  const medal = medals[rank - 1];
+  if (!medal) return `<div class="rank">${rank}</div>`;
+  return `<div class="rank medal ${medal.className}" title="${medal.label}" aria-label="${medal.label}">${medal.symbol}</div>`;
 }
 
 function renderPadelPanel() {
@@ -1151,14 +1173,12 @@ function renderTwoCourtPadelPanel() {
 
 function addTwoCourtPadelSets() {
   const values = ["court1A", "court1B", "court2A", "court2B"].map((id) => Number(document.querySelector(`#${id}`).value));
-  if (values.some((value) => !Number.isFinite(value) || value < 0)) {
-    showMessage("Enter valid games.");
-    return;
-  }
 
   const match = activeMatch();
   const setOne = [values[0], values[1]];
   const setTwo = [values[2], values[3]];
+  if (!match || !padelSetScoresAreValid(setOne[0], setOne[1]) || !padelSetScoresAreValid(setTwo[0], setTwo[1])) return;
+
   state.padel.sets.push(setOne, setTwo);
   state.matches.push({
     mode: "P8",
@@ -1208,14 +1228,22 @@ function renderPadelResult() {
   els.standings.className = "standings";
   els.standings.innerHTML = rows.map((row, index) => `
     <div class="standing-row">
-      <div class="rank">${index + 1}</div>
-      <div>
+      ${rankBadgeHtml(padelRankForRow(rows, row, index))}
+      <div class="standing-main">
         <strong>${escapeHtml(row.name)}</strong>
         <div class="statline">${row.wins} sets · ${escapeHtml(row.setLine)}</div>
       </div>
       <div class="points">${row.wins}</div>
     </div>
   `).join("");
+}
+
+function padelRankForRow(rows, row, index) {
+  let rank = 1;
+  for (let rowIndex = 1; rowIndex <= index; rowIndex += 1) {
+    if (rows[rowIndex - 1].wins !== rows[rowIndex].wins) rank += 1;
+  }
+  return rank;
 }
 
 function isPadelScoreMode() {
@@ -1242,10 +1270,7 @@ function renderLog() {
             <input data-edit-score-a="${matchIndex}" type="number" min="0" max="99" value="${match.scoreA}" inputmode="numeric">
             <span>-</span>
             <input data-edit-score-b="${matchIndex}" type="number" min="0" max="99" value="${match.scoreB}" inputmode="numeric">
-          </div>
-          <div class="log-actions">
-            <button class="primary-button" data-save-match="${matchIndex}" type="button">Save</button>
-            <button class="ghost-button" data-cancel-match type="button">Cancel</button>
+            <button class="primary-button save-button" data-save-match="${matchIndex}" type="button">Save</button>
           </div>
         </div>
       `;
@@ -1370,6 +1395,7 @@ function renderEntryScreen() {
   renderGameTypeOptions();
   els.gameTypeSelect.value = state.entryGameType;
   els.courtsField.hidden = state.entryPeople !== 8;
+  els.courtsSelect.disabled = state.entryPeople === 8 && state.entryGameType === "standard";
   els.courtsSelect.value = String(state.entryCourts);
 
   if (state.entryStep === 2) {
@@ -1452,7 +1478,9 @@ function startFromEntry() {
 
 els.gameTypeSelect.addEventListener("change", () => {
   state.entryGameType = els.gameTypeSelect.value;
+  if (state.entryPeople === 8 && state.entryGameType === "standard") state.entryCourts = 2;
   els.entryMessage.textContent = "";
+  renderEntryScreen();
 });
 
 els.courtsSelect.addEventListener("change", () => {
@@ -1474,6 +1502,7 @@ els.entryFirstStep.addEventListener("click", (event) => {
 els.entryNextBtn.addEventListener("click", () => {
   state.entryGameType = els.gameTypeSelect.value;
   state.entryCourts = state.entryPeople === 8 ? Number(els.courtsSelect.value) : 1;
+  if (state.entryPeople === 8 && state.entryGameType === "standard") state.entryCourts = 2;
   state.entryStep = 2;
   els.entryMessage.textContent = "";
   renderEntryScreen();
@@ -1592,11 +1621,6 @@ els.matchLog.addEventListener("click", (event) => {
   const saveButton = event.target.closest("[data-save-match]");
   if (saveButton) {
     saveEditedMatch(Number(saveButton.dataset.saveMatch));
-    return;
-  }
-
-  if (event.target.closest("[data-cancel-match]")) {
-    cancelEditMatch();
   }
 });
 els.matchLog.addEventListener("input", (event) => {
@@ -1617,6 +1641,6 @@ els.matchLog.addEventListener("input", (event) => {
 });
 els.calculateBtn.addEventListener("click", calculateStandings);
 els.resetBtn.addEventListener("click", resetToEntry);
-els.generateMatchBtn.addEventListener("click", generateNextMatch);
+els.generateMatchBtn?.addEventListener("click", generateNextMatch);
 
 resetToEntry();
