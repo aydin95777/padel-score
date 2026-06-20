@@ -117,6 +117,7 @@ const els = {
   scoreB: document.querySelector("#scoreB"),
   scoreTotal: document.querySelector("#scoreTotal"),
   scoreTargetLabel: document.querySelector("#scoreTargetLabel"),
+  roundProgress: document.querySelector("#roundProgress"),
   teamALabel: document.querySelector("#teamALabel"),
   teamBLabel: document.querySelector("#teamBLabel"),
   calculateBtn: document.querySelector("#calculateBtn"),
@@ -436,6 +437,10 @@ function buildAmericanoRounds() {
     rounds.push(roundConfig);
   };
 
+  if (count === 6) {
+    return buildSixPlayerAmericanoRounds(players);
+  }
+
   for (let round = 0; round < count - 1; round += 1) {
     const order = [players[0], ...rotating];
     const pairs = [];
@@ -443,16 +448,7 @@ function buildAmericanoRounds() {
       pairs.push([order[index], order[count - 1 - index]]);
     }
 
-    if (count === 6) {
-      const waitingIndex = round % pairs.length;
-      const playingPairs = pairs.filter((_, index) => index !== waitingIndex);
-      addRound({
-        label: `Round ${round + 1}`,
-        teamA: playingPairs[0],
-        teamB: playingPairs[1],
-        waiting: [pairs[waitingIndex]],
-      });
-    } else if (state.entryCourts === 1) {
+    if (state.entryCourts === 1) {
       addRound({
         label: `Round ${round + 1} · Game 1`,
         teamA: pairs[0],
@@ -487,6 +483,34 @@ function buildAmericanoRounds() {
   }
 
   return rounds;
+}
+
+function buildSixPlayerAmericanoRounds(players) {
+  const pairings = [
+    [[2, 3], [4, 5]],
+    [[0, 1], [3, 5]],
+    [[2, 5], [3, 4]],
+    [[0, 2], [1, 3]],
+    [[1, 5], [2, 4]],
+    [[0, 3], [1, 2]],
+    [[0, 5], [1, 4]],
+    [[0, 4], [2, 3]],
+    [[0, 1], [4, 5]],
+  ];
+
+  return pairings.map((round, index) => {
+    const teamA = round[0].map((playerIndex) => players[playerIndex]);
+    const teamB = round[1].map((playerIndex) => players[playerIndex]);
+    const playing = new Set([...teamA, ...teamB]);
+    const waiting = players.filter((playerIndex) => !playing.has(playerIndex));
+
+    return {
+      label: `Round ${index + 1}`,
+      teamA,
+      teamB,
+      waiting: [waiting],
+    };
+  });
 }
 
 function updatePlayer(index, value) {
@@ -1049,6 +1073,7 @@ function renderMatchOnly() {
     renderGenerateButton();
     renderSchedule();
     updateScoreFeedback();
+    updateRoundProgress();
     return;
   }
 
@@ -1063,6 +1088,7 @@ function renderMatchOnly() {
     }
     renderGenerateButton();
     updateScoreFeedback();
+    updateRoundProgress();
     return;
   }
 
@@ -1109,6 +1135,7 @@ function renderMatchOnly() {
   renderSchedule();
   renderPadelPanel();
   updateScoreFeedback();
+  updateRoundProgress();
 }
 
 function renderSingleCourtScorePanel(match) {
@@ -1431,7 +1458,11 @@ function renderLog() {
         <div class="log-result">
           <b>#${matchIndex + 1}</b>
           <span class="log-label">${escapeHtml(match.label)}</span>
-          <strong>${escapeHtml(teamName(match.teamA))} ${match.scoreA} - ${match.scoreB} ${escapeHtml(teamName(match.teamB))}</strong>
+          <div class="log-result-line">
+            <span>${escapeHtml(teamName(match.teamA))}</span>
+            <strong class="score-pill">${match.scoreA} - ${match.scoreB}</strong>
+            <span>${escapeHtml(teamName(match.teamB))}</span>
+          </div>
         </div>
         <button class="icon-button edit-button" data-edit-match="${matchIndex}" type="button" title="Edit match" aria-label="Edit match">✎</button>
       </div>
@@ -1518,6 +1549,18 @@ function updateScoreFeedback() {
   } else if (total > 21) {
     els.scoreTotal.classList.add("error");
   }
+}
+
+function updateRoundProgress() {
+  if (!isAmericanoMode() || !state.sessionStarted) {
+    els.roundProgress.hidden = true;
+    return;
+  }
+
+  const total = state.americanoRounds.length;
+  const current = Math.min(state.roundIndex + 1, total);
+  els.roundProgress.hidden = false;
+  els.roundProgress.textContent = total ? `Round ${current} / ${total}` : "Round 0 / 0";
 }
 
 function changeScore(target, step) {
