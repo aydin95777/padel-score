@@ -10,6 +10,7 @@ const state = {
   teams: [],
   matches: [],
   editingMatchIndex: null,
+  notingMatchIndex: null,
   currentTeams: [0, 1],
   waitingTeam: 2,
   waitingTeams: [],
@@ -25,12 +26,34 @@ const state = {
   },
   americanoRounds: [],
   roundIndex: 0,
-  finalizedResult: null,
 };
 
 const SESSION_STORAGE_KEY = "padelScoreSession";
 const SESSION_STORAGE_VERSION = 2;
 const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
+const ROOM_CODE_LENGTH = 6;
+const ROOM_SYNC_DELAY_MS = 250;
+const FIREBASE_SDK_VERSION = "10.12.5";
+
+const room = {
+  code: null,
+  ownerUid: null,
+  uid: null,
+  unsubscribe: null,
+  applyingRemote: false,
+  syncTimer: null,
+  firebaseReady: false,
+  firebaseError: null,
+  app: null,
+  auth: null,
+  db: null,
+  api: null,
+};
+
+const clientState = {
+  finalizedActive: false,
+  finalizedResult: null,
+};
 
 const modeConfig = {
   "4": {
@@ -102,7 +125,19 @@ const els = {
   entryBackBtn: document.querySelector("#entryBackBtn"),
   entryStartBtn: document.querySelector("#entryStartBtn"),
   entryMessage: document.querySelector("#entryMessage"),
+  roomEntryPanel: document.querySelector("#roomEntryPanel"),
+  openJoinRoomBtn: document.querySelector("#openJoinRoomBtn"),
+  joinRoomDialog: document.querySelector("#joinRoomDialog"),
+  roomCodeInput: document.querySelector("#roomCodeInput"),
+  joinRoomBtn: document.querySelector("#joinRoomBtn"),
+  cancelJoinRoomBtn: document.querySelector("#cancelJoinRoomBtn"),
+  roomEntryMessage: document.querySelector("#roomEntryMessage"),
   workspace: document.querySelector("#workspace"),
+  roomPanel: document.querySelector("#roomPanel"),
+  roomCodeLabel: document.querySelector("#roomCodeLabel"),
+  roomOwnerLabel: document.querySelector("#roomOwnerLabel"),
+  leaveRoomBtn: document.querySelector("#leaveRoomBtn"),
+  deleteRoomBtn: document.querySelector("#deleteRoomBtn"),
   setupPanel: document.querySelector("#setupPanel"),
   setupSubtitle: document.querySelector("#setupSubtitle"),
   setupSteps: document.querySelector("#setupSteps"),
@@ -125,11 +160,10 @@ const els = {
   matchLog: document.querySelector("#matchLog"),
   matchCount: document.querySelector("#matchCount"),
   schedulePanel: document.querySelector("#schedulePanel"),
-  resetBtn: document.querySelector("#resetBtn"),
-  clearSessionBtn: document.querySelector("#clearSessionBtn"),
-  resetDialog: document.querySelector("#resetDialog"),
-  confirmResetBtn: document.querySelector("#confirmResetBtn"),
-  cancelResetBtn: document.querySelector("#cancelResetBtn"),
+  deleteRoomDialog: document.querySelector("#deleteRoomDialog"),
+  deleteRoomMessage: document.querySelector("#deleteRoomMessage"),
+  confirmDeleteRoomBtn: document.querySelector("#confirmDeleteRoomBtn"),
+  cancelDeleteRoomBtn: document.querySelector("#cancelDeleteRoomBtn"),
   generateMatchBtn: document.querySelector("#generateMatchBtn"),
   formMessage: document.querySelector("#formMessage"),
 };
@@ -162,7 +196,9 @@ function initMode(mode, keepNames = false) {
     : defaultPlayers(count);
   state.teams = defaultTeams(mode);
   state.matches = [];
-  state.finalizedResult = null;
+  state.editingMatchIndex = null;
+  state.notingMatchIndex = null;
+  resetClientFinalizedResult();
   state.currentTeams = [0, 1];
   state.waitingTeam = 2;
   state.waitingTeams = initialWaitingTeams(mode);
@@ -190,7 +226,9 @@ function resetSession(keepNames = true) {
     : defaultPlayers(count);
   state.teams = defaultTeams(mode);
   state.matches = [];
-  state.finalizedResult = null;
+  state.editingMatchIndex = null;
+  state.notingMatchIndex = null;
+  resetClientFinalizedResult();
   state.currentTeams = [0, 1];
   state.waitingTeam = 2;
   state.waitingTeams = initialWaitingTeams(mode);
@@ -213,10 +251,12 @@ function saveSession() {
       version: SESSION_STORAGE_VERSION,
       expiresAt: Date.now() + SESSION_TTL_MS,
       state,
+      room: room.code ? { code: room.code, ownerUid: room.ownerUid } : null,
     }));
   } catch {
     // Storage can be unavailable in private mode or locked-down browsers.
   }
+  scheduleRoomSync();
 }
 
 function clearSavedSession() {
@@ -224,6 +264,68 @@ function clearSavedSession() {
     localStorage.removeItem(SESSION_STORAGE_KEY);
   } catch {
     // Ignore storage cleanup failures.
+  }
+}
+
+function roomSnapshotState() {
+  const snapshot = JSON.parse(JSON.stringify(state));
+  delete snapshot.finalizedResult;
+  delete snapshot.editingMatchIndex;
+  delete snapshot.notingMatchIndex;
+  return snapshot;
+}
+
+function resultSignature() {
+  return JSON.stringify({
+    mode: state.mode,
+    sessionStarted: state.sessionStarted,
+    players: state.players,
+    teams: state.teams,
+    matches: state.matches,
+    padelSets: state.padel?.sets || [],
+  });
+}
+
+function setClientFinalizedResult(result) {
+  if (!result) {
+    clientState.finalizedResult = null;
+    return;
+  }
+
+  clientState.finalizedActive = true;
+  clientState.finalizedResult = { ...result, signature: resultSignature() };
+}
+
+function clientFinalizedResultIsCurrent() {
+  return clientState.finalizedResult?.signature === resultSignature();
+}
+
+function resetClientFinalizedResult() {
+  clientState.finalizedActive = false;
+  clientState.finalizedResult = null;
+}
+
+function scheduleRoomSync() {
+  if (!room.code || room.applyingRemote || !room.api || !room.db) return;
+  clearTimeout(room.syncTimer);
+  room.syncTimer = setTimeout(() => {
+    syncRoomState();
+  }, ROOM_SYNC_DELAY_MS);
+}
+
+async function syncRoomState() {
+  if (!room.code || room.applyingRemote || !room.api || !room.db) return;
+  clearTimeout(room.syncTimer);
+  room.syncTimer = null;
+  try {
+    const updates = {
+      state: roomSnapshotState(),
+      updatedAt: room.api.serverTimestamp(),
+    };
+    await room.api.update(room.api.ref(room.db, `rooms/${room.code}`), updates);
+  } catch (error) {
+    room.firebaseError = error;
+    renderRoomStatus();
   }
 }
 
@@ -236,6 +338,10 @@ function restoreSavedSession() {
     }
 
     Object.assign(state, saved.state);
+    if (saved.room?.code) {
+      room.code = saved.room.code;
+      room.ownerUid = saved.room.ownerUid || null;
+    }
     normalizeSessionState();
     return true;
   } catch {
@@ -245,6 +351,7 @@ function restoreSavedSession() {
 }
 
 function normalizeSessionState() {
+  delete state.finalizedResult;
   state.entryPeople = Number(state.entryPeople);
   if (![4, 6, 8].includes(state.entryPeople)) state.entryPeople = 6;
 
@@ -262,6 +369,16 @@ function normalizeSessionState() {
   if (!Array.isArray(state.players)) state.players = [];
   if (!Array.isArray(state.teams)) state.teams = [];
   if (!Array.isArray(state.matches)) state.matches = [];
+  state.matches = state.matches.map((match) => ({
+    comment: "",
+    notes: match.comment ? [match.comment] : [],
+    ...match,
+    notes: Array.isArray(match.notes)
+      ? match.notes.filter((note) => String(note).trim())
+      : (match.comment ? [match.comment] : []),
+  }));
+  state.editingMatchIndex = null;
+  state.notingMatchIndex = null;
   if (!Array.isArray(state.waitingTeams)) state.waitingTeams = [];
   if (!Array.isArray(state.americanoRounds)) state.americanoRounds = [];
   if (!state.padel || !Array.isArray(state.padel.points) || !Array.isArray(state.padel.games) || !Array.isArray(state.padel.sets)) {
@@ -288,8 +405,199 @@ function normalizeSessionState() {
   }
 }
 
+async function ensureFirebase() {
+  if (room.firebaseReady) return true;
+  if (!window.PADEL_FIREBASE_CONFIG) {
+    room.firebaseError = new Error("Add Firebase config to firebase-config.js before using rooms.");
+    renderRoomStatus();
+    return false;
+  }
+
+  try {
+    const appModule = await import(`https://www.gstatic.com/firebasejs/${FIREBASE_SDK_VERSION}/firebase-app.js`);
+    const authModule = await import(`https://www.gstatic.com/firebasejs/${FIREBASE_SDK_VERSION}/firebase-auth.js`);
+    const databaseModule = await import(`https://www.gstatic.com/firebasejs/${FIREBASE_SDK_VERSION}/firebase-database.js`);
+
+    room.app = appModule.initializeApp(window.PADEL_FIREBASE_CONFIG);
+    room.auth = authModule.getAuth(room.app);
+    room.db = databaseModule.getDatabase(room.app);
+    room.api = {
+      signInAnonymously: authModule.signInAnonymously,
+      onAuthStateChanged: authModule.onAuthStateChanged,
+      ref: databaseModule.ref,
+      get: databaseModule.get,
+      set: databaseModule.set,
+      update: databaseModule.update,
+      remove: databaseModule.remove,
+      onValue: databaseModule.onValue,
+      off: databaseModule.off,
+      serverTimestamp: databaseModule.serverTimestamp,
+    };
+
+    const user = await anonymousUser();
+    room.uid = user.uid;
+    room.firebaseReady = true;
+    room.firebaseError = null;
+    renderRoomStatus();
+    return true;
+  } catch (error) {
+    room.firebaseError = error;
+    renderRoomStatus();
+    return false;
+  }
+}
+
+function anonymousUser() {
+  if (room.auth.currentUser) return Promise.resolve(room.auth.currentUser);
+  return new Promise((resolve, reject) => {
+    const unsubscribe = room.api.onAuthStateChanged(room.auth, (user) => {
+      if (user) {
+        unsubscribe();
+        resolve(user);
+      }
+    }, reject);
+
+    room.api.signInAnonymously(room.auth).catch((error) => {
+      unsubscribe();
+      reject(error);
+    });
+  });
+}
+
+function generateRoomCode() {
+  const min = 10 ** (ROOM_CODE_LENGTH - 1);
+  const max = (10 ** ROOM_CODE_LENGTH) - 1;
+  return String(Math.floor(min + Math.random() * (max - min + 1)));
+}
+
+async function uniqueRoomCode() {
+  for (let attempt = 0; attempt < 12; attempt += 1) {
+    const code = generateRoomCode();
+    const snapshot = await room.api.get(room.api.ref(room.db, `rooms/${code}`));
+    if (!snapshot.exists()) return code;
+  }
+  throw new Error("Could not allocate a room code. Try again.");
+}
+
+async function createRoomForCurrentGame() {
+  if (!(await ensureFirebase())) {
+    const message = room.firebaseError?.message || "Rooms are unavailable.";
+    if (state.mode) showMessage(message);
+    else els.entryMessage.textContent = message;
+    return;
+  }
+
+  const code = await uniqueRoomCode();
+  room.code = code;
+  room.ownerUid = room.uid;
+  await room.api.set(room.api.ref(room.db, `rooms/${code}`), {
+    code,
+    ownerUid: room.uid,
+    createdAt: room.api.serverTimestamp(),
+    updatedAt: room.api.serverTimestamp(),
+    state: roomSnapshotState(),
+  });
+  listenToRoom(code);
+  renderRoomStatus();
+  saveSession();
+}
+
+async function joinRoomByCode(code) {
+  const normalizedCode = String(code || "").replace(/\D/g, "").slice(0, ROOM_CODE_LENGTH);
+  if (normalizedCode.length < 5) {
+    els.roomEntryMessage.textContent = "Enter a 5 or 6 digit room code.";
+    return;
+  }
+  if (!(await ensureFirebase())) {
+    els.roomEntryMessage.textContent = room.firebaseError?.message || "Rooms are unavailable.";
+    return;
+  }
+
+  const roomRef = room.api.ref(room.db, `rooms/${normalizedCode}`);
+  const snapshot = await room.api.get(roomRef);
+  if (!snapshot.exists()) {
+    els.roomEntryMessage.textContent = "Room not found.";
+    return;
+  }
+
+  const data = snapshot.val();
+  room.code = normalizedCode;
+  room.ownerUid = data.ownerUid || null;
+  applyRemoteState(data.state);
+  listenToRoom(normalizedCode);
+  els.roomEntryMessage.textContent = "";
+  closeJoinRoomDialog();
+  render();
+}
+
+function listenToRoom(code) {
+  if (!room.api || !room.db) return;
+  if (room.unsubscribe) room.unsubscribe();
+  const roomRef = room.api.ref(room.db, `rooms/${code}`);
+  room.unsubscribe = room.api.onValue(roomRef, (snapshot) => {
+    if (!snapshot.exists()) {
+      leaveRoom(false);
+      resetToEntry();
+      els.roomEntryMessage.textContent = "The room was deleted.";
+      return;
+    }
+    const data = snapshot.val();
+    room.ownerUid = data.ownerUid || room.ownerUid;
+    room.applyingRemote = true;
+    if (data.state) applyRemoteState(data.state);
+    render();
+    room.applyingRemote = false;
+  });
+}
+
+function applyRemoteState(nextState) {
+  Object.assign(state, nextState);
+  normalizeSessionState();
+}
+
+function leaveRoom(shouldRender = true) {
+  clearTimeout(room.syncTimer);
+  room.syncTimer = null;
+  if (room.unsubscribe) room.unsubscribe();
+  room.unsubscribe = null;
+  room.code = null;
+  room.ownerUid = null;
+  try {
+    localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({
+      version: SESSION_STORAGE_VERSION,
+      expiresAt: Date.now() + SESSION_TTL_MS,
+      state,
+      room: null,
+    }));
+  } catch {
+    // Ignore storage cleanup failures.
+  }
+  if (shouldRender) renderRoomStatus();
+}
+
+async function deleteCurrentRoom() {
+  if (!room.code || !room.api || !room.db || room.uid !== room.ownerUid) return;
+  const code = room.code;
+  await room.api.remove(room.api.ref(room.db, `rooms/${code}`));
+  leaveRoom();
+  resetToEntry();
+}
+
+function renderRoomStatus() {
+  if (els.roomEntryPanel) els.roomEntryPanel.hidden = Boolean(state.mode) || state.entryStep !== 1;
+  if (!els.roomPanel) return;
+
+  els.roomPanel.hidden = !room.code;
+  if (!room.code) return;
+
+  els.roomCodeLabel.textContent = room.code;
+  const isOwner = room.uid && room.uid === room.ownerUid;
+  els.roomOwnerLabel.textContent = isOwner ? "Owner" : "Shared session";
+  els.deleteRoomBtn.hidden = !isOwner;
+}
+
 function clearFinalizedResult() {
-  state.finalizedResult = null;
+  clientState.finalizedResult = null;
 }
 
 function resetToEntry() {
@@ -304,10 +612,11 @@ function resetToEntry() {
   state.players = [];
   state.teams = [];
   state.matches = [];
-  clearFinalizedResult();
+  resetClientFinalizedResult();
   state.waitingTeams = [];
   state.fixedStreaks = {};
   state.editingMatchIndex = null;
+  state.notingMatchIndex = null;
   state.americanoRounds = [];
   resetPadelScore();
   state.roundIndex = 0;
@@ -321,18 +630,26 @@ function resetToEntry() {
   clearSavedSession();
 }
 
-function openResetDialog() {
-  els.resetDialog.hidden = false;
-  els.confirmResetBtn.focus();
+function openJoinRoomDialog() {
+  els.roomCodeInput.value = "";
+  els.roomEntryMessage.textContent = "";
+  els.joinRoomDialog.hidden = false;
+  els.roomCodeInput.focus();
 }
 
-function closeResetDialog() {
-  els.resetDialog.hidden = true;
+function closeJoinRoomDialog() {
+  els.joinRoomDialog.hidden = true;
 }
 
-function confirmResetSession() {
-  closeResetDialog();
-  resetToEntry();
+function openDeleteRoomDialog() {
+  if (!room.code) return;
+  els.deleteRoomMessage.textContent = `Room ${room.code} will be deleted for everyone.`;
+  els.deleteRoomDialog.hidden = false;
+  els.confirmDeleteRoomBtn.focus();
+}
+
+function closeDeleteRoomDialog() {
+  els.deleteRoomDialog.hidden = true;
 }
 
 function isAmericanoMode(mode = state.mode) {
@@ -570,6 +887,8 @@ function addMatch(event) {
     scoreA,
     scoreB,
     winner: scoreA > scoreB ? "A" : "B",
+    comment: "",
+    notes: [],
   });
 
   if (state.mode === "6" || (state.mode === "R8" && state.entryCourts === 1)) {
@@ -610,6 +929,8 @@ function addParallelMatches() {
     scoreA: court1A,
     scoreB: court1B,
     winner: court1A > court1B ? "A" : "B",
+    comment: "",
+    notes: [],
   });
   state.matches.push({
     mode: state.mode,
@@ -619,6 +940,8 @@ function addParallelMatches() {
     scoreA: court2A,
     scoreB: court2B,
     winner: court2A > court2B ? "A" : "B",
+    comment: "",
+    notes: [],
   });
 
   if (state.mode === "R8") {
@@ -647,6 +970,8 @@ function addSingleCourtMatch() {
     scoreA,
     scoreB,
     winner: scoreA > scoreB ? "A" : "B",
+    comment: "",
+    notes: [],
   });
 
   if (state.mode === "6" || (state.mode === "R8" && state.entryCourts === 1)) {
@@ -664,6 +989,13 @@ function addSingleCourtMatch() {
 
 function editMatch(matchIndex) {
   state.editingMatchIndex = matchIndex;
+  state.notingMatchIndex = null;
+  renderLog();
+}
+
+function noteMatch(matchIndex) {
+  state.notingMatchIndex = matchIndex;
+  state.editingMatchIndex = null;
   renderLog();
 }
 
@@ -682,6 +1014,21 @@ function saveEditedMatch(matchIndex) {
   clearFinalizedResult();
   syncPadelSetsFromMatches();
   render();
+}
+
+function saveMatchNote(matchIndex) {
+  const match = state.matches[matchIndex];
+  if (!match) return;
+
+  const note = document.querySelector(`[data-note-comment="${matchIndex}"]`)?.value.trim();
+  if (note) {
+    if (!Array.isArray(match.notes)) match.notes = [];
+    match.notes.push(note);
+    match.comment = match.notes.join("\n");
+  }
+  state.notingMatchIndex = null;
+  saveSession();
+  renderLog();
 }
 
 function editedScoresAreValid(match, scoreA, scoreB) {
@@ -734,6 +1081,7 @@ function addPadelPoint(teamIndex) {
     points[otherIndex] = 3;
   }
 
+  saveSession();
   renderPadelPanel();
 }
 
@@ -756,6 +1104,8 @@ function addSingleCourtPadelSet() {
     scoreB,
     winner: scoreA > scoreB ? "A" : "B",
     setScore: `${scoreA}-${scoreB}`,
+    comment: "",
+    notes: [],
   });
   render();
 }
@@ -776,11 +1126,14 @@ function winPadelGame(teamIndex) {
       scoreB: state.padel.games[1],
       winner: state.padel.games[0] > state.padel.games[1] ? "A" : "B",
       setScore: `${state.padel.games[0]}-${state.padel.games[1]}`,
+      comment: "",
+      notes: [],
     });
     state.padel.games = [0, 0];
     renderLog();
   }
 
+  saveSession();
   renderPadelPanel();
 }
 
@@ -894,15 +1247,18 @@ function calculateStandings() {
     return;
   }
 
+  const result = finalizedResultForCurrentState();
+  if (!result) return;
+  setClientFinalizedResult(result);
+  renderClientFinalizedResult();
+}
+
+function finalizedResultForCurrentState() {
   const stats = new Map();
   const keyFor = (team) => (isAmericanoMode() ? null : team.join("-"));
 
   if (isPadelScoreMode()) {
-    const rows = padelResultRows();
-    state.finalizedResult = { type: "padel", rows };
-    renderPadelRows(rows);
-    saveSession();
-    return;
+    return { type: "padel", rows: padelResultRows() };
   }
 
   if (isAmericanoMode()) {
@@ -930,9 +1286,7 @@ function calculateStandings() {
     b.points - a.points || b.wins - a.wins || (b.points - b.against) - (a.points - a.against)
   );
 
-  state.finalizedResult = { type: "standings", rows };
-  renderStandings(rows);
-  saveSession();
+  return { type: "standings", rows };
 }
 
 function applyPlayerStats(stats, team, points, against, won) {
@@ -947,6 +1301,7 @@ function applyTeamStats(row, points, against, won) {
 }
 
 function render() {
+  renderRoomStatus();
   if (!state.mode) {
     els.entryScreen.hidden = false;
     els.workspace.hidden = true;
@@ -1159,11 +1514,8 @@ function renderSingleCourtScorePanel(match) {
     ${waitingPairs.length ? `
       <div class="waiting-row">
         <span>Waiting</span>
-        ${waitingPairs.map((team, index) => `
-          <div class="pair-score ${index % 2 === 1 ? "pair-score-right" : ""}">
-            <strong class="pair-name">${teamNameHtml(team)}</strong>
-            <input type="number" placeholder="0" disabled>
-          </div>
+        ${waitingPairs.map((team) => `
+          <strong class="pair-name">${teamNameHtml(team)}</strong>
         `).join("")}
       </div>
     ` : ""}
@@ -1248,12 +1600,29 @@ function renderStandings(rows) {
 }
 
 function renderFinalizedResult() {
-  if (!state.finalizedResult) return;
-  if (state.finalizedResult.type === "padel") {
-    renderPadelRows(state.finalizedResult.rows);
+  if (!clientState.finalizedActive) return;
+
+  if (!clientState.finalizedResult || !clientFinalizedResultIsCurrent()) {
+    const result = finalizedResultForCurrentState();
+    if (!result) {
+      resetClientFinalizedResult();
+      return;
+    }
+    setClientFinalizedResult(result);
+  }
+
+  renderClientFinalizedResult();
+}
+
+function renderClientFinalizedResult() {
+  if (!clientState.finalizedResult) return;
+
+  if (clientState.finalizedResult.type === "padel") {
+    renderPadelRows(clientState.finalizedResult.rows);
     return;
   }
-  renderStandings(state.finalizedResult.rows);
+
+  renderStandings(clientState.finalizedResult.rows);
 }
 
 function rankForRow(rows, row, index) {
@@ -1363,6 +1732,8 @@ function addTwoCourtPadelSets() {
     scoreA: setOne[0],
     scoreB: setOne[1],
     winner: setOne[0] > setOne[1] ? "A" : "B",
+    comment: "",
+    notes: [],
   });
   state.matches.push({
     mode: "P8",
@@ -1372,6 +1743,8 @@ function addTwoCourtPadelSets() {
     scoreA: setTwo[0],
     scoreB: setTwo[1],
     winner: setTwo[0] > setTwo[1] ? "A" : "B",
+    comment: "",
+    notes: [],
   });
   render();
 }
@@ -1427,6 +1800,17 @@ function isPadelScoreMode() {
   return state.mode === "4" || state.mode === "P8";
 }
 
+function matchNotesHtml(match) {
+  const notes = Array.isArray(match.notes) && match.notes.length
+    ? match.notes
+    : (match.comment ? String(match.comment).split("\n") : []);
+  return notes
+    .map((note) => String(note).trim())
+    .filter(Boolean)
+    .map((note) => `<p class="match-comment">${escapeHtml(note)}</p>`)
+    .join("");
+}
+
 function renderLog() {
   els.matchCount.textContent = `${state.matches.length} ${state.matches.length === 1 ? "match" : "matches"}`;
   if (!state.matches.length) {
@@ -1441,7 +1825,6 @@ function renderLog() {
     if (state.editingMatchIndex === matchIndex) {
       return `
         <div class="log-row editing">
-          <b>#${matchIndex + 1}</b>
           <span>${escapeHtml(match.label)} · ${escapeHtml(teamName(match.teamA))} - ${escapeHtml(teamName(match.teamB))}</span>
           <div class="edit-score-row">
             <input data-edit-score-a="${matchIndex}" type="number" min="0" max="99" value="${match.scoreA}" inputmode="numeric">
@@ -1453,18 +1836,34 @@ function renderLog() {
       `;
     }
 
+    if (state.notingMatchIndex === matchIndex) {
+      return `
+        <div class="log-row editing">
+          <span>${escapeHtml(match.label)} · ${escapeHtml(teamName(match.teamA))} - ${escapeHtml(teamName(match.teamB))}</span>
+          <label class="edit-comment-row">
+            <span>Note</span>
+            <input data-note-comment="${matchIndex}" value="" placeholder="Add a note">
+          </label>
+          <button class="primary-button save-button" data-save-note="${matchIndex}" type="button">Save</button>
+        </div>
+      `;
+    }
+
     return `
       <div class="log-row">
         <div class="log-result">
-          <b>#${matchIndex + 1}</b>
           <span class="log-label">${escapeHtml(match.label)}</span>
           <div class="log-result-line">
             <span>${escapeHtml(teamName(match.teamA))}</span>
             <strong class="score-pill">${match.scoreA} - ${match.scoreB}</strong>
             <span>${escapeHtml(teamName(match.teamB))}</span>
           </div>
+          ${matchNotesHtml(match)}
         </div>
-        <button class="icon-button edit-button" data-edit-match="${matchIndex}" type="button" title="Edit match" aria-label="Edit match">✎</button>
+        <div class="log-actions">
+          <button class="icon-button edit-button note-button" data-note-match="${matchIndex}" type="button" title="Add note" aria-label="Add note">+</button>
+          <button class="icon-button edit-button" data-edit-match="${matchIndex}" type="button" title="Edit match" aria-label="Edit match">✎</button>
+        </div>
       </div>
     `;
   }).join("");
@@ -1484,7 +1883,9 @@ function startSession() {
   state.sessionStarted = true;
   state.setupStep = isAmericanoMode() ? 2 : 3;
   state.matches = [];
+  resetClientFinalizedResult();
   state.editingMatchIndex = null;
+  state.notingMatchIndex = null;
   state.currentTeams = [0, 1];
   state.waitingTeam = 2;
   state.waitingTeams = initialWaitingTeams(state.mode);
@@ -1585,6 +1986,7 @@ function autocompleteAmericanoScore(changedTarget) {
 function renderEntryScreen() {
   els.entryFirstStep.hidden = state.entryStep !== 1;
   els.entryNamesStep.hidden = state.entryStep !== 2;
+  if (els.roomEntryPanel) els.roomEntryPanel.hidden = Boolean(state.mode) || state.entryStep !== 1;
   document.querySelectorAll("[data-people]").forEach((button) => {
     button.classList.toggle("active", Number(button.dataset.people) === state.entryPeople);
   });
@@ -1639,7 +2041,7 @@ function entryTeams() {
   );
 }
 
-function startFromEntry() {
+async function startFromEntry() {
   const names = entryPlayerNames();
   let mode = null;
 
@@ -1673,6 +2075,11 @@ function startFromEntry() {
   state.setupStep = 1;
   els.entryMessage.textContent = "";
   startSession();
+  try {
+    await createRoomForCurrentGame();
+  } catch (error) {
+    showMessage(error.message || "Could not create room.");
+  }
 }
 
 els.gameTypeSelect.addEventListener("change", () => {
@@ -1720,6 +2127,26 @@ els.entryBackBtn.addEventListener("click", () => {
 });
 
 els.entryStartBtn.addEventListener("click", startFromEntry);
+
+els.openJoinRoomBtn.addEventListener("click", openJoinRoomDialog);
+
+els.roomCodeInput.addEventListener("input", () => {
+  els.roomCodeInput.value = els.roomCodeInput.value.replace(/\D/g, "").slice(0, ROOM_CODE_LENGTH);
+  els.roomEntryMessage.textContent = "";
+});
+
+els.roomCodeInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    joinRoomByCode(els.roomCodeInput.value);
+  }
+});
+
+els.joinRoomBtn.addEventListener("click", () => {
+  joinRoomByCode(els.roomCodeInput.value);
+});
+
+els.cancelJoinRoomBtn.addEventListener("click", closeJoinRoomDialog);
 
 els.setupContent.addEventListener("click", (event) => {
   if (event.target.closest("[data-setup-back]")) {
@@ -1823,9 +2250,21 @@ els.matchLog.addEventListener("click", (event) => {
     return;
   }
 
+  const noteButton = event.target.closest("[data-note-match]");
+  if (noteButton) {
+    noteMatch(Number(noteButton.dataset.noteMatch));
+    return;
+  }
+
   const saveButton = event.target.closest("[data-save-match]");
   if (saveButton) {
     saveEditedMatch(Number(saveButton.dataset.saveMatch));
+    return;
+  }
+
+  const saveNoteButton = event.target.closest("[data-save-note]");
+  if (saveNoteButton) {
+    saveMatchNote(Number(saveNoteButton.dataset.saveNote));
   }
 });
 els.matchLog.addEventListener("input", (event) => {
@@ -1845,20 +2284,41 @@ els.matchLog.addEventListener("input", (event) => {
   if (target && Number.isFinite(value)) target.value = Math.max(0, Math.min(21, 21 - value));
 });
 els.calculateBtn.addEventListener("click", calculateStandings);
-els.resetBtn.addEventListener("click", openResetDialog);
-els.clearSessionBtn.addEventListener("click", openResetDialog);
-els.confirmResetBtn.addEventListener("click", confirmResetSession);
-els.cancelResetBtn.addEventListener("click", closeResetDialog);
-els.resetDialog.addEventListener("click", (event) => {
-  if (event.target === els.resetDialog) closeResetDialog();
+els.leaveRoomBtn.addEventListener("click", () => {
+  leaveRoom();
+  resetToEntry();
+});
+els.deleteRoomBtn.addEventListener("click", () => {
+  openDeleteRoomDialog();
+});
+els.confirmDeleteRoomBtn.addEventListener("click", () => {
+  closeDeleteRoomDialog();
+  deleteCurrentRoom().catch((error) => showMessage(error.message || "Could not delete room."));
+});
+els.cancelDeleteRoomBtn.addEventListener("click", closeDeleteRoomDialog);
+els.joinRoomDialog.addEventListener("click", (event) => {
+  if (event.target === els.joinRoomDialog) closeJoinRoomDialog();
+});
+els.deleteRoomDialog.addEventListener("click", (event) => {
+  if (event.target === els.deleteRoomDialog) closeDeleteRoomDialog();
 });
 document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape" && !els.resetDialog.hidden) closeResetDialog();
+  if (event.key === "Escape" && !els.joinRoomDialog.hidden) closeJoinRoomDialog();
+  if (event.key === "Escape" && !els.deleteRoomDialog.hidden) closeDeleteRoomDialog();
 });
 els.generateMatchBtn?.addEventListener("click", generateNextMatch);
 
-if (restoreSavedSession()) {
-  render();
-} else {
+async function init() {
+  const restored = restoreSavedSession();
+  if (restored) {
+    render();
+    if (room.code && await ensureFirebase()) {
+      listenToRoom(room.code);
+    }
+    return;
+  }
+
   resetToEntry();
 }
+
+init();

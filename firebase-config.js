@@ -1,0 +1,1 @@
+window.PADEL_FIREBASE_CONFIG = null;

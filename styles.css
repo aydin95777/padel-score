@@ -82,6 +82,11 @@ h3 {
   gap: 8px;
 }
 
+.room-entry-panel {
+  display: grid;
+  gap: 8px;
+}
+
 .people-buttons {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -126,6 +131,41 @@ h3 {
   max-width: 720px;
   margin: 0 auto;
   padding: 10px;
+}
+
+.room-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--card);
+  padding: 10px 14px;
+}
+
+.room-panel > div:first-child {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.room-label,
+.room-owner-label {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+#roomCodeLabel {
+  font-size: 1.25rem;
+}
+
+.room-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 8px;
 }
 
 .setup-panel,
@@ -378,8 +418,9 @@ select:focus {
 
 .waiting-row {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  align-items: center;
+  grid-template-columns: 1fr;
+  align-items: start;
+  justify-items: start;
   gap: 6px;
   border: 1px dashed var(--line);
   border-radius: 8px;
@@ -398,23 +439,14 @@ select:focus {
 .waiting-row .pair-name {
   display: grid;
   justify-items: start;
+  text-align: left;
   gap: 2px;
-}
-
-.waiting-row .pair-score:last-child .pair-name {
-  justify-items: end;
-  text-align: right;
 }
 
 .waiting-row .pair-name span {
   color: var(--muted);
   font-size: 0.92rem;
   font-weight: 900;
-}
-
-.waiting-row input:disabled {
-  background: #e5e7eb;
-  color: var(--muted);
 }
 
 .court-score-row {
@@ -678,7 +710,7 @@ select:focus {
 
 .log-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 38px;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;
   font-size: 0.9rem;
@@ -734,6 +766,15 @@ select:focus {
   color: var(--text);
 }
 
+.log-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.note-button {
+  font-size: 1.1rem;
+}
+
 .log-row.editing {
   grid-template-columns: 1fr;
   align-items: start;
@@ -755,6 +796,22 @@ select:focus {
   text-align: left;
   font-size: 1rem;
   font-weight: 900;
+}
+
+.edit-comment-row {
+  width: 100%;
+}
+
+.edit-comment-row input {
+  min-height: 42px;
+}
+
+.match-comment {
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 0.84rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 
 .save-button {
@@ -801,6 +858,10 @@ select:focus {
   line-height: 1.4;
 }
 
+.dialog label {
+  margin: 12px 0 8px;
+}
+
 .dialog-actions {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -811,6 +872,11 @@ select:focus {
   background: var(--red);
 }
 
+.danger-outline {
+  border-color: rgba(220, 38, 38, 0.32);
+  color: var(--red);
+}
+
 @media (min-width: 760px) {
   .entry-screen {
     max-width: 720px;
@@ -819,6 +885,10 @@ select:focus {
 
   .workspace {
     grid-template-columns: 1fr 1fr;
+  }
+
+  .room-panel {
+    grid-column: 1 / -1;
   }
 
   .score-panel,

@@ -34,16 +34,29 @@
           <button id="entryStartBtn" class="secondary-button" type="button">Generate matches</button>
           <button id="entryBackBtn" class="ghost-button" type="button">Back</button>
         </div>
+        <div id="roomEntryPanel" class="room-entry-panel">
+          <button id="openJoinRoomBtn" class="ghost-button" type="button">Join room</button>
+        </div>
         <p id="entryMessage" class="form-message" role="status"></p>
       </section>
 
       <section id="workspace" class="workspace">
+        <section id="roomPanel" class="room-panel" hidden>
+          <div>
+            <span class="room-label">Room</span>
+            <strong id="roomCodeLabel">-</strong>
+            <span id="roomOwnerLabel" class="room-owner-label"></span>
+          </div>
+          <div class="room-actions">
+            <button id="leaveRoomBtn" class="ghost-button" type="button">Leave</button>
+            <button id="deleteRoomBtn" class="ghost-button danger-outline" type="button" hidden>Delete</button>
+          </div>
+        </section>
         <aside id="setupPanel" class="setup-panel">
           <div class="panel-heading">
             <div>
               <h2 id="setupSubtitle">Setup</h2>
             </div>
-            <button id="resetBtn" class="icon-button" type="button" title="Reset session" aria-label="Reset session">↺</button>
           </div>
           <div id="setupSteps" class="setup-steps" aria-label="Setup progress"></div>
           <div id="setupContent" class="setup-content"></div>
@@ -106,23 +119,38 @@
           </div>
           <div class="bottom-actions">
             <button id="calculateBtn" class="primary-button" type="button">Finalize</button>
-            <button id="clearSessionBtn" class="ghost-button" type="button">Reset</button>
           </div>
         </aside>
       </section>
 
-      <div id="resetDialog" class="dialog-backdrop" hidden>
-        <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="resetDialogTitle">
-          <h2 id="resetDialogTitle">Reset session?</h2>
-          <p>This clears all player names, teams, scores, match log, and saved browser data for this session.</p>
+      <div id="joinRoomDialog" class="dialog-backdrop" hidden>
+        <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="joinRoomDialogTitle">
+          <h2 id="joinRoomDialogTitle">Join room</h2>
+          <label>
+            <span>Room code</span>
+            <input id="roomCodeInput" type="text" inputmode="numeric" autocomplete="off" maxlength="6" placeholder="123456">
+          </label>
+          <p id="roomEntryMessage" class="form-message" role="status"></p>
           <div class="dialog-actions">
-            <button id="confirmResetBtn" class="primary-button danger-button" type="button">Reset</button>
-            <button id="cancelResetBtn" class="ghost-button" type="button">Keep session</button>
+            <button id="joinRoomBtn" class="primary-button" type="button">Join</button>
+            <button id="cancelJoinRoomBtn" class="ghost-button" type="button">Cancel</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="deleteRoomDialog" class="dialog-backdrop" hidden>
+        <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="deleteRoomDialogTitle">
+          <h2 id="deleteRoomDialogTitle">Delete room?</h2>
+          <p id="deleteRoomMessage">This removes the room for everyone.</p>
+          <div class="dialog-actions">
+            <button id="confirmDeleteRoomBtn" class="primary-button danger-button" type="button">Delete</button>
+            <button id="cancelDeleteRoomBtn" class="ghost-button" type="button">Keep room</button>
           </div>
         </div>
       </div>
     </main>
 
-    <script src="app.js"></script>
+    <script src="firebase-config.js"></script>
+    <script type="module" src="app.js"></script>
   </body>
 </html>
