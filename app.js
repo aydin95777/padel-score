@@ -609,8 +609,8 @@ function renderRoomStatus() {
   if (els.roomEntryPanel) els.roomEntryPanel.hidden = Boolean(state.mode) || state.entryStep !== 1;
   if (!els.roomPanel) return;
 
-  els.roomPanel.hidden = !room.code && !room.creating;
-  if (!room.code && !room.creating) return;
+  els.roomPanel.hidden = !state.mode && !room.code && !room.creating;
+  if (!state.mode && !room.code && !room.creating) return;
 
   if (room.creating) {
     els.roomCodeLabel.textContent = "Creating...";
@@ -618,6 +618,16 @@ function renderRoomStatus() {
     els.shareRoomBtn.textContent = "Copy link";
     els.shareRoomBtn.disabled = true;
     els.leaveRoomBtn.disabled = true;
+    els.deleteRoomBtn.hidden = true;
+    return;
+  }
+
+  if (!room.code) {
+    els.roomCodeLabel.textContent = "Local session";
+    els.roomOwnerLabel.textContent = "Not connected to a room";
+    els.shareRoomBtn.textContent = "Copy link";
+    els.shareRoomBtn.disabled = true;
+    els.leaveRoomBtn.disabled = false;
     els.deleteRoomBtn.hidden = true;
     return;
   }
@@ -659,6 +669,13 @@ function showCopyFeedback(label) {
 
 function sharedRoomCodeFromUrl() {
   return new URLSearchParams(window.location.search).get("room");
+}
+
+function clearSharedRoomCodeFromUrl() {
+  const url = new URL(window.location.href);
+  if (!url.searchParams.has("room")) return;
+  url.searchParams.delete("room");
+  window.history.replaceState({}, "", url.toString());
 }
 
 function clearFinalizedResult() {
@@ -2352,6 +2369,7 @@ els.calculateBtn.addEventListener("click", calculateStandings);
 els.shareRoomBtn.addEventListener("click", shareRoomLink);
 els.leaveRoomBtn.addEventListener("click", () => {
   leaveRoom();
+  clearSharedRoomCodeFromUrl();
   resetToEntry();
 });
 els.deleteRoomBtn.addEventListener("click", () => {
