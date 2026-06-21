@@ -33,6 +33,7 @@ const SESSION_STORAGE_VERSION = 2;
 const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
 const ROOM_CODE_LENGTH = 6;
 const ROOM_SYNC_DELAY_MS = 250;
+const COPY_FEEDBACK_MS = 1800;
 const FIREBASE_SDK_VERSION = "10.12.5";
 
 const room = {
@@ -42,6 +43,8 @@ const room = {
   unsubscribe: null,
   applyingRemote: false,
   syncTimer: null,
+  copyTimer: null,
+  creating: false,
   firebaseReady: false,
   firebaseError: null,
   app: null,
@@ -136,6 +139,7 @@ const els = {
   roomPanel: document.querySelector("#roomPanel"),
   roomCodeLabel: document.querySelector("#roomCodeLabel"),
   roomOwnerLabel: document.querySelector("#roomOwnerLabel"),
+  shareRoomBtn: document.querySelector("#shareRoomBtn"),
   leaveRoomBtn: document.querySelector("#leaveRoomBtn"),
   deleteRoomBtn: document.querySelector("#deleteRoomBtn"),
   setupPanel: document.querySelector("#setupPanel"),
@@ -480,26 +484,41 @@ async function uniqueRoomCode() {
 }
 
 async function createRoomForCurrentGame() {
+  room.creating = true;
+  renderRoomStatus();
+  showMessage("Creating shared room...");
+
   if (!(await ensureFirebase())) {
+    room.creating = false;
+    renderRoomStatus();
     const message = room.firebaseError?.message || "Rooms are unavailable.";
     if (state.mode) showMessage(message);
     else els.entryMessage.textContent = message;
     return;
   }
 
-  const code = await uniqueRoomCode();
-  room.code = code;
-  room.ownerUid = room.uid;
-  await room.api.set(room.api.ref(room.db, `rooms/${code}`), {
-    code,
-    ownerUid: room.uid,
-    createdAt: room.api.serverTimestamp(),
-    updatedAt: room.api.serverTimestamp(),
-    state: roomSnapshotState(),
-  });
-  listenToRoom(code);
-  renderRoomStatus();
-  saveSession();
+  try {
+    const code = await uniqueRoomCode();
+    room.code = code;
+    room.ownerUid = room.uid;
+    await room.api.set(room.api.ref(room.db, `rooms/${code}`), {
+      code,
+      ownerUid: room.uid,
+      createdAt: room.api.serverTimestamp(),
+      updatedAt: room.api.serverTimestamp(),
+      state: roomSnapshotState(),
+    });
+    listenToRoom(code);
+    saveSession();
+    clearMessage();
+  } catch (error) {
+    room.code = null;
+    room.ownerUid = null;
+    throw error;
+  } finally {
+    room.creating = false;
+    renderRoomStatus();
+  }
 }
 
 async function joinRoomByCode(code) {
@@ -538,7 +557,7 @@ function listenToRoom(code) {
     if (!snapshot.exists()) {
       leaveRoom(false);
       resetToEntry();
-      els.roomEntryMessage.textContent = "The room was deleted.";
+      els.entryMessage.textContent = "The room was deleted.";
       return;
     }
     const data = snapshot.val();
@@ -557,11 +576,14 @@ function applyRemoteState(nextState) {
 
 function leaveRoom(shouldRender = true) {
   clearTimeout(room.syncTimer);
+  clearTimeout(room.copyTimer);
   room.syncTimer = null;
+  room.copyTimer = null;
   if (room.unsubscribe) room.unsubscribe();
   room.unsubscribe = null;
   room.code = null;
   room.ownerUid = null;
+  room.creating = false;
   try {
     localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({
       version: SESSION_STORAGE_VERSION,
@@ -587,13 +609,56 @@ function renderRoomStatus() {
   if (els.roomEntryPanel) els.roomEntryPanel.hidden = Boolean(state.mode) || state.entryStep !== 1;
   if (!els.roomPanel) return;
 
-  els.roomPanel.hidden = !room.code;
-  if (!room.code) return;
+  els.roomPanel.hidden = !room.code && !room.creating;
+  if (!room.code && !room.creating) return;
+
+  if (room.creating) {
+    els.roomCodeLabel.textContent = "Creating...";
+    els.roomOwnerLabel.textContent = "Preparing shared room";
+    els.shareRoomBtn.textContent = "Copy link";
+    els.shareRoomBtn.disabled = true;
+    els.leaveRoomBtn.disabled = true;
+    els.deleteRoomBtn.hidden = true;
+    return;
+  }
 
   els.roomCodeLabel.textContent = room.code;
   const isOwner = room.uid && room.uid === room.ownerUid;
   els.roomOwnerLabel.textContent = isOwner ? "Owner" : "Shared session";
+  if (!room.copyTimer) els.shareRoomBtn.textContent = "Copy link";
+  els.shareRoomBtn.disabled = false;
+  els.leaveRoomBtn.disabled = false;
   els.deleteRoomBtn.hidden = !isOwner;
+}
+
+function roomShareUrl() {
+  const url = new URL(window.location.href);
+  url.searchParams.set("room", room.code);
+  return url.toString();
+}
+
+async function shareRoomLink() {
+  if (!room.code) return;
+  const link = roomShareUrl();
+  try {
+    await navigator.clipboard.writeText(link);
+    showCopyFeedback("Copied");
+  } catch {
+    showCopyFeedback("Copy failed");
+  }
+}
+
+function showCopyFeedback(label) {
+  if (!els.shareRoomBtn) return;
+  clearTimeout(room.copyTimer);
+  els.shareRoomBtn.textContent = label;
+  room.copyTimer = setTimeout(() => {
+    els.shareRoomBtn.textContent = "Copy link";
+  }, COPY_FEEDBACK_MS);
+}
+
+function sharedRoomCodeFromUrl() {
+  return new URLSearchParams(window.location.search).get("room");
 }
 
 function clearFinalizedResult() {
@@ -2284,6 +2349,7 @@ els.matchLog.addEventListener("input", (event) => {
   if (target && Number.isFinite(value)) target.value = Math.max(0, Math.min(21, 21 - value));
 });
 els.calculateBtn.addEventListener("click", calculateStandings);
+els.shareRoomBtn.addEventListener("click", shareRoomLink);
 els.leaveRoomBtn.addEventListener("click", () => {
   leaveRoom();
   resetToEntry();
@@ -2309,6 +2375,17 @@ document.addEventListener("keydown", (event) => {
 els.generateMatchBtn?.addEventListener("click", generateNextMatch);
 
 async function init() {
+  const sharedRoomCode = sharedRoomCodeFromUrl();
+  if (sharedRoomCode) {
+    els.entryMessage.textContent = "Joining shared room...";
+    await joinRoomByCode(sharedRoomCode);
+    if (!room.code && els.roomEntryMessage.textContent) {
+      render();
+      els.entryMessage.textContent = els.roomEntryMessage.textContent;
+    }
+    return;
+  }
+
   const restored = restoreSavedSession();
   if (restored) {
     render();
